@@ -1,0 +1,165 @@
+{
+  "info": {
+    "name": "QuickCommerce - OTP & Admin",
+    "_postman_id": "quickcommerce-otp-admin",
+    "description": "Collection to perform OTP login and basic admin operations (categories, products).\nImport into Postman and set `base_url` env var (e.g. http://localhost:5001/api/v1).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Send OTP",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"+919999999999\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/auth/send-otp",
+          "host": [ "{{base_url}}" ],
+          "path": [ "auth", "send-otp" ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "// Save OTP to environment variable (only in dev the otp is returned)",
+              "var json = pm.response.json();",
+              "if (json.otp) {",
+              "  pm.environment.set('otp', json.otp);",
+              "  console.log('Saved otp:', json.otp);",
+              "} else {",
+              "  console.log('OTP not returned by server (production?). Check logs/console');",
+              "}",
+              "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Verify OTP (login)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"+919999999999\",\n  \"otp\": \"{{otp}}\",\n  \"name\": \"Admin User\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/auth/verify-otp",
+          "host": [ "{{base_url}}" ],
+          "path": [ "auth", "verify-otp" ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var json = pm.response.json();",
+              "if (json.accessToken) {",
+              "  pm.environment.set('accessToken', json.accessToken);",
+              "  pm.environment.set('refreshToken', json.refreshToken);",
+              "  console.log('Saved accessToken');",
+              "}",
+              "pm.test('Login success', function () { pm.expect(json.success).to.eql(true); });"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Category (admin)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Fruits & Vegetables\",\n  \"description\": \"Fresh fruits and vegetables\",\n  \"displayOrder\": 1\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/categories",
+          "host": [ "{{base_url}}" ],
+          "path": [ "categories" ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Category created', function () { pm.response.to.have.status(201); });",
+              "var json = pm.response.json();",
+              "if (json.data && json.data._id) pm.environment.set('lastCategoryId', json.data._id);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Categories (public)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/categories",
+          "host": [ "{{base_url}}" ],
+          "path": [ "categories" ]
+        }
+      }
+    },
+    {
+      "name": "Create Product (admin)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Fresh Tomatoes\",\n  \"description\": \"Farm fresh red tomatoes\",\n  \"category\": \"{{lastCategoryId}}\",\n  \"price\": 40,\n  \"stock\": 100,\n  \"sku\": \"TOM-001\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/products",
+          "host": [ "{{base_url}}" ],
+          "path": [ "products" ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Product created', function () { pm.response.to.have.status(201); });",
+              "var json = pm.response.json();",
+              "if (json.data && json.data._id) pm.environment.set('lastProductId', json.data._id);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ],
+  "event": [],
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:5001/api/v1" },
+    { "key": "accessToken", "value": "" },
+    { "key": "refreshToken", "value": "" },
+    { "key": "otp", "value": "" }
+  ]
+}

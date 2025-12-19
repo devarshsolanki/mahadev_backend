@@ -1,0 +1,9 @@
+node_modules
+.env
+.md
+.sh
+md
+logs
+dist
+coverage
+docs/
