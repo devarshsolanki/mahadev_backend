@@ -207,19 +207,24 @@ class CheckoutController {
       }
 
       // Record coupon usage
-      if (cart.appliedCoupon) {
-        await CouponUsage.create({
-          coupon: cart.appliedCoupon.couponId,
-          user: userId,
-          order: order._id,
-          discountAmount: cart.appliedCoupon.discountAmount
-        });
+      if (cart.appliedCoupon && cart.appliedCoupon.couponId && cart.appliedCoupon.discountAmount !== undefined) {
+        try {
+          await CouponUsage.create({
+            coupon: cart.appliedCoupon.couponId,
+            user: userId,
+            order: order._id,
+            discountAmount: cart.appliedCoupon.discountAmount
+          });
 
-        // Increment coupon usage count
-        await Coupon.findByIdAndUpdate(
-          cart.appliedCoupon.couponId,
-          { $inc: { usedCount: 1 } }
-        );
+          // Increment coupon usage count
+          await Coupon.findByIdAndUpdate(
+            cart.appliedCoupon.couponId,
+            { $inc: { usedCount: 1 } }
+          );
+        } catch (couponError) {
+          logger.warn(`Failed to record coupon usage for order ${orderNumber}: ${couponError.message}`);
+          // Continue without failing the order - coupon recording is not critical
+        }
       }
 
       // Clear cart

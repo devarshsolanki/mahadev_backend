@@ -2,13 +2,31 @@ const jwt = require('jsonwebtoken');
 const logger = require('./logger');
 
 class JWTUtil {
+  // Get the appropriate expiry based on NODE_ENV
+  static getAccessExpiry() {
+    const isDevelopment = process.env.NODE_ENV === 'development';
+    return isDevelopment 
+      ? (process.env.JWT_ACCESS_EXPIRY_DEV || '7d')
+      : (process.env.JWT_ACCESS_EXPIRY_PROD || '30m');
+  }
+
+  static getRefreshExpiry() {
+    const isDevelopment = process.env.NODE_ENV === 'development';
+    return isDevelopment 
+      ? (process.env.JWT_REFRESH_EXPIRY_DEV || '30d')
+      : (process.env.JWT_REFRESH_EXPIRY_PROD || '7d');
+  }
+
   // Generate access token
   static generateAccessToken(userId, role) {
     try {
+      const expiresIn = this.getAccessExpiry();
+      logger.info(`[JWT] Generating access token with expiry: ${expiresIn} (NODE_ENV: ${process.env.NODE_ENV})`);
+      
       return jwt.sign(
         { userId, role },
         process.env.JWT_ACCESS_SECRET,
-        { expiresIn: process.env.JWT_ACCESS_EXPIRY || '30m' }
+        { expiresIn }
       );
     } catch (error) {
       logger.error('Error generating access token:', error);
@@ -19,10 +37,13 @@ class JWTUtil {
   // Generate refresh token
   static generateRefreshToken(userId) {
     try {
+      const expiresIn = this.getRefreshExpiry();
+      logger.info(`[JWT] Generating refresh token with expiry: ${expiresIn} (NODE_ENV: ${process.env.NODE_ENV})`);
+      
       return jwt.sign(
         { userId },
         process.env.JWT_REFRESH_SECRET,
-        { expiresIn: process.env.JWT_REFRESH_EXPIRY || '7d' }
+        { expiresIn }
       );
     } catch (error) {
       logger.error('Error generating refresh token:', error);

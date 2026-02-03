@@ -9,8 +9,7 @@ const variantSchema = new mongoose.Schema({
   },
   sku: {
     type: String,
-    required: true,
-    unique: true,
+    sparse: true,
     uppercase: true
   },
   price: {
