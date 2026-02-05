@@ -10,14 +10,24 @@ class CartController {
     try {
       const userId = req.user.userId;
 
-      let cart = await Cart.findOne({ user: userId, isActive: true })
+      // Use findOneAndUpdate with upsert to avoid E11000 errors
+      let cart = await Cart.findOneAndUpdate(
+        { user: userId, isActive: true },
+        { $setOnInsert: { items: [], isActive: true } },
+        { 
+          upsert: true, 
+          new: true,
+          runValidators: false
+        }
+      )
         .populate('items.product', 'name price stock status images')
         .populate('appliedCoupon.couponId', 'code description type value');
 
-      if (!cart) {
-        // Create empty cart if doesn't exist
-        cart = await Cart.create({ user: userId });
-      }
+      // Deactivate any other carts for this user (cleanup old ones)
+      await Cart.updateMany(
+        { user: userId, _id: { $ne: cart._id } },
+        { isActive: false }
+      );
 
       // Recalculate totals
       cart.calculateTotals();
@@ -67,12 +77,22 @@ class CartController {
         });
       }
 
-      // Get or create cart
-      let cart = await Cart.findOne({ user: userId, isActive: true });
+      // Get or create cart - use atomic upsert to avoid E11000 errors
+      let cart = await Cart.findOneAndUpdate(
+        { user: userId, isActive: true },
+        { $setOnInsert: { items: [], isActive: true } },
+        { 
+          upsert: true, 
+          new: true,
+          runValidators: false
+        }
+      );
 
-      if (!cart) {
-        cart = new Cart({ user: userId });
-      }
+      // Deactivate any other carts for this user (cleanup old ones)
+      await Cart.updateMany(
+        { user: userId, _id: { $ne: cart._id } },
+        { isActive: false }
+      );
 
       // Add item to cart
       cart.addItem(product, quantity, variantId);

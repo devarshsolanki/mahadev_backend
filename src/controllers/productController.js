@@ -190,6 +190,15 @@ class ProductController {
       if (productData.mrp !== undefined) productData.mrp = Number(productData.mrp);
       if (productData.stock !== undefined) productData.stock = Number(productData.stock);
       if (productData.unit !== undefined) productData.unit = String(productData.unit).trim();
+      
+      // Convert isFeatured to boolean if it comes as string from FormData
+      if (productData.isFeatured !== undefined) {
+        if (typeof productData.isFeatured === 'string') {
+          productData.isFeatured = productData.isFeatured.toLowerCase() === 'true';
+        } else {
+          productData.isFeatured = Boolean(productData.isFeatured);
+        }
+      }
 
       // Create product
       const product = await Product.create(productData);
@@ -263,6 +272,15 @@ class ProductController {
       if (updates.mrp !== undefined) updates.mrp = Number(updates.mrp);
       if (updates.stock !== undefined) updates.stock = Number(updates.stock);
       if (updates.unit !== undefined) updates.unit = String(updates.unit).trim();
+      
+      // Convert isFeatured to boolean if it comes as string from FormData
+      if (updates.isFeatured !== undefined) {
+        if (typeof updates.isFeatured === 'string') {
+          updates.isFeatured = updates.isFeatured.toLowerCase() === 'true';
+        } else {
+          updates.isFeatured = Boolean(updates.isFeatured);
+        }
+      }
 
       // Verify category if being updated
       if (updates.category) {
