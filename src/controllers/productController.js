@@ -1,9 +1,46 @@
 const Product = require('../models/Product');
 const Category = require('../models/Category');
+const mongoose = require('mongoose');
 const logger = require('../utils/logger');
 const { STATUS_CODES, PAGINATION, PRODUCT_STATUS } = require('../config/constants');
 
 class ProductController {
+  static async getCategoryNodeAndDescendantIds(categoryId) {
+    if (!categoryId || !mongoose.Types.ObjectId.isValid(categoryId)) {
+      return [];
+    }
+
+    const nodeId = new mongoose.Types.ObjectId(categoryId);
+    const agg = await Category.aggregate([
+      { $match: { _id: nodeId } },
+      {
+        $graphLookup: {
+          from: 'categories',
+          startWith: '$_id',
+          connectFromField: '_id',
+          connectToField: 'parentCategory',
+          as: 'descendants'
+        }
+      },
+      {
+        $project: {
+          ids: {
+            $concatArrays: [
+              ['$_id'],
+              { $map: { input: '$descendants', as: 'd', in: '$$d._id' } }
+            ]
+          }
+        }
+      }
+    ]);
+
+    if (!agg.length || !Array.isArray(agg[0].ids) || !agg[0].ids.length) {
+      return [nodeId];
+    }
+
+    return agg[0].ids;
+  }
+
   // Get all products with filters and pagination
   static async getProducts(req, res) {
     try {
@@ -25,8 +62,38 @@ class ProductController {
       // Build filter query
       const filter = { status };
 
-      if (category) filter.category = category;
-      if (subcategory) filter.subcategory = subcategory;
+      // Category/subcategory filtering:
+      // - Treat the requested node as a tree root.
+      // - Include products linked via either `category` or `subcategory`.
+      // - Expand with `$graphLookup` so nested descendants are included.
+      const nodeId = subcategory || category;
+      if (nodeId) {
+        try {
+          const categoryIds = await ProductController.getCategoryNodeAndDescendantIds(nodeId);
+
+          if (!categoryIds.length) {
+            // Invalid category id format: force empty result safely.
+            filter._id = { $in: [] };
+          } else {
+            filter.$or = [
+              { category: { $in: categoryIds } },
+              { subcategory: { $in: categoryIds } }
+            ];
+          }
+        } catch (err) {
+          logger.warn('Category descendant resolution failed in getProducts:', err);
+          if (mongoose.Types.ObjectId.isValid(nodeId)) {
+            const fallbackId = new mongoose.Types.ObjectId(nodeId);
+            filter.$or = [
+              { category: fallbackId },
+              { subcategory: fallbackId }
+            ];
+          } else {
+            filter._id = { $in: [] };
+          }
+        }
+      }
+
       if (isFeatured !== undefined) filter.isFeatured = isFeatured === 'true';
       if (inStock === 'true') filter.stock = { $gt: 0 };
 

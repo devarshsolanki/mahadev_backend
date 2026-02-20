@@ -1,9 +1,47 @@
 const Category = require('../models/Category');
 const Product = require('../models/Product');
+const mongoose = require('mongoose');
 const logger = require('../utils/logger');
 const { STATUS_CODES } = require('../config/constants');
 
 class CategoryController {
+  static async getCategoryNodeAndDescendantIds(categoryId) {
+    const rawId = categoryId && categoryId.toString ? categoryId.toString() : categoryId;
+    if (!rawId || !mongoose.Types.ObjectId.isValid(rawId)) {
+      return [];
+    }
+
+    const nodeId = new mongoose.Types.ObjectId(rawId);
+    const agg = await Category.aggregate([
+      { $match: { _id: nodeId } },
+      {
+        $graphLookup: {
+          from: 'categories',
+          startWith: '$_id',
+          connectFromField: '_id',
+          connectToField: 'parentCategory',
+          as: 'descendants'
+        }
+      },
+      {
+        $project: {
+          ids: {
+            $concatArrays: [
+              ['$_id'],
+              { $map: { input: '$descendants', as: 'd', in: '$$d._id' } }
+            ]
+          }
+        }
+      }
+    ]);
+
+    if (!agg.length || !Array.isArray(agg[0].ids) || !agg[0].ids.length) {
+      return [nodeId];
+    }
+
+    return agg[0].ids;
+  }
+
   // Get all categories
   static async getCategories(req, res) {
     try {
@@ -96,10 +134,14 @@ class CategoryController {
         isActive: true
       }).sort({ displayOrder: 1, name: 1 });
 
-      // Get product count
+      // Get product count for this category + all descendants.
+      const categoryIds = await CategoryController.getCategoryNodeAndDescendantIds(category._id);
       const productCount = await Product.countDocuments({
-        category: category._id,
-        status: 'active'
+        status: 'active',
+        $or: [
+          { category: { $in: categoryIds } },
+          { subcategory: { $in: categoryIds } }
+        ]
       });
 
       return res.status(STATUS_CODES.OK).json({

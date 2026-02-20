@@ -126,6 +126,7 @@ Query Parameters:
 page - Page number (default: 1)
 limit - Items per page (default: 20, max: 100)
 category - Filter by category ID
+  - NOTE: filtering by a parent `category` will also return products in all of its subcategories (recursive).
 subcategory - Filter by subcategory ID
 search - Full-text search query
 minPrice - Minimum price
