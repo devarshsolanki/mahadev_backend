@@ -38,7 +38,8 @@ const cartSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
-    unique: true
+    unique: true,
+    sparse: true
   },
   items: [cartItemSchema],
   
@@ -102,8 +103,12 @@ const cartSchema = new mongoose.Schema({
 });
 
 // Indexes
+// compound index for finding active carts for a user
 cartSchema.index({ user: 1, isActive: 1 });
+// index for cleanup queries on old carts
 cartSchema.index({ updatedAt: -1 });
+// ensure unique active cart per user (duplicates should be inactive)
+cartSchema.index({ user: 1 }, { unique: true, sparse: true });
 
 // Calculate cart totals
 cartSchema.methods.calculateTotals = function(deliveryFee = 0, taxRate = 0) {

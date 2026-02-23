@@ -26,13 +26,14 @@ const applyCouponValidation = [
 ];
 
 // Routes
-router.get('/', CartController.getCart);
-router.post('/add', addToCartValidation, validate, CartController.addToCart);
-router.put('/items/:itemId', updateCartItemValidation, validate, CartController.updateCartItem);
-router.delete('/items/:itemId', CartController.removeFromCart);
-router.delete('/clear', CartController.clearCart);
-router.post('/coupon/apply', applyCouponValidation, validate, CartController.applyCoupon);
-router.delete('/coupon/remove', CartController.removeCoupon);
-router.get('/validate', CartController.validateCart);
+// Bind methods to preserve 'this' context for static method calls
+router.get('/', (req, res) => CartController.getCart(req, res));
+router.post('/add', addToCartValidation, validate, (req, res) => CartController.addToCart(req, res));
+router.put('/items/:itemId', updateCartItemValidation, validate, (req, res) => CartController.updateCartItem(req, res));
+router.delete('/items/:itemId', (req, res) => CartController.removeFromCart(req, res));
+router.delete('/clear', (req, res) => CartController.clearCart(req, res));
+router.post('/coupon/apply', applyCouponValidation, validate, (req, res) => CartController.applyCoupon(req, res));
+router.delete('/coupon/remove', (req, res) => CartController.removeCoupon(req, res));
+router.get('/validate', (req, res) => CartController.validateCart(req, res));
 
 module.exports = router;

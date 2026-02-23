@@ -5,29 +5,87 @@ const logger = require('../utils/logger');
 const { STATUS_CODES, PRODUCT_STATUS } = require('../config/constants');
 
 class CartController {
+  /**
+   * Safely get or create a cart for a user.
+   * Handles race conditions and ensures exactly one active cart per user.
+   * @param {string} userId - The user's ID
+   * @returns {Promise<Object>} Cart document or null if creation completely fails
+   */
+  static async getOrCreateCart(userId) {
+    // Step 1: Try to find existing active cart
+    let cart = await Cart.findOne({ user: userId, isActive: true });
+    if (cart) {
+      return cart;
+    }
+
+    // Step 2: No active cart found, attempt to create one
+    try {
+      cart = await Cart.create({
+        user: userId,
+        items: [],
+        isActive: true
+      });
+      return cart;
+    } catch (err) {
+      // Step 3: If E11000 error (duplicate), another request created it first
+      // Retry finding it (with exponential backoff patience)
+      if (err.code === 11000) {
+        logger.info(`Cart creation race condition for user ${userId}, retrying fetch...`);
+        
+        // Retry up to 3 times with small delay
+        for (let attempt = 0; attempt < 3; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 50 * Math.pow(2, attempt))); // 50ms, 100ms, 200ms
+          cart = await Cart.findOne({ user: userId, isActive: true });
+          if (cart) {
+            return cart;
+          }
+        }
+        
+        // If still not found after retries, log and return null
+        logger.warn(`Cart not found for user ${userId} after concurrent creation attempts`);
+        return null;
+      }
+      
+      // For other errors, rethrow
+      throw err;
+    }
+  }
+
+  /**
+   * Deactivate any duplicate carts for a user (safety cleanup)
+   */
+  static async deactivateDuplicateCarts(userId, activeCartId) {
+    try {
+      await Cart.updateMany(
+        { user: userId, _id: { $ne: activeCartId }, isActive: true },
+        { isActive: false }
+      );
+    } catch (err) {
+      logger.warn(`Failed to deactivate duplicate carts for user ${userId}:`, err.message);
+    }
+  }
+
   // Get user's cart
   static async getCart(req, res) {
     try {
       const userId = req.user.userId;
 
-      // Use findOneAndUpdate with upsert to avoid E11000 errors
-      let cart = await Cart.findOneAndUpdate(
-        { user: userId, isActive: true },
-        { $setOnInsert: { items: [], isActive: true } },
-        { 
-          upsert: true, 
-          new: true,
-          runValidators: false
-        }
-      )
-        .populate('items.product', 'name price stock status images')
-        .populate('appliedCoupon.couponId', 'code description type value');
+      // Get or create cart (handles race conditions safely)
+      let cart = await this.getOrCreateCart(userId);
 
-      // Deactivate any other carts for this user (cleanup old ones)
-      await Cart.updateMany(
-        { user: userId, _id: { $ne: cart._id } },
-        { isActive: false }
-      );
+      if (!cart) {
+        return res.status(STATUS_CODES.SERVER_ERROR).json({
+          success: false,
+          message: 'Unable to initialize cart. Please try again.'
+        });
+      }
+
+      // Populate relations
+      await cart.populate('items.product', 'name price stock status images');
+      await cart.populate('appliedCoupon.couponId', 'code description type value');
+
+      // Deactivate any duplicates (safety cleanup)
+      await this.deactivateDuplicateCarts(userId, cart._id);
 
       // Recalculate totals
       cart.calculateTotals();
@@ -53,7 +111,7 @@ class CartController {
       const userId = req.user.userId;
       const { productId, quantity = 1, variantId } = req.body;
 
-      // Validate product
+      // Validate product exists and is available
       const product = await Product.findById(productId);
 
       if (!product) {
@@ -77,31 +135,27 @@ class CartController {
         });
       }
 
-      // Get or create cart - use atomic upsert to avoid E11000 errors
-      let cart = await Cart.findOneAndUpdate(
-        { user: userId, isActive: true },
-        { $setOnInsert: { items: [], isActive: true } },
-        { 
-          upsert: true, 
-          new: true,
-          runValidators: false
-        }
-      );
+      // Get or create cart safely (handles race conditions)
+      let cart = await this.getOrCreateCart(userId);
 
-      // Deactivate any other carts for this user (cleanup old ones)
-      await Cart.updateMany(
-        { user: userId, _id: { $ne: cart._id } },
-        { isActive: false }
-      );
+      if (!cart) {
+        return res.status(STATUS_CODES.SERVER_ERROR).json({
+          success: false,
+          message: 'Unable to initialize cart. Please try again.'
+        });
+      }
 
-      // Add item to cart
+      // Deactivate any duplicate carts (safety cleanup)
+      await this.deactivateDuplicateCarts(userId, cart._id);
+
+      // Add item to cart (handles duplicate product logic)
       cart.addItem(product, quantity, variantId);
       await cart.save();
 
-      // Populate and return
+      // Populate product details in response
       await cart.populate('items.product', 'name price stock status images');
 
-      logger.info(`Item added to cart: ${productId} by user: ${userId}`);
+      logger.info(`Item added to cart: ${productId} (qty: ${quantity}) by user: ${userId}`);
 
       return res.status(STATUS_CODES.OK).json({
         success: true,
@@ -125,6 +179,7 @@ class CartController {
       const { itemId } = req.params;
       const { quantity } = req.body;
 
+      // Validate quantity
       if (quantity < 0) {
         return res.status(STATUS_CODES.BAD_REQUEST).json({
           success: false,
@@ -132,6 +187,7 @@ class CartController {
         });
       }
 
+      // Get user's cart
       const cart = await Cart.findOne({ user: userId, isActive: true });
 
       if (!cart) {
@@ -141,7 +197,7 @@ class CartController {
         });
       }
 
-      // Find item
+      // Find item in cart
       const item = cart.items.id(itemId);
       if (!item) {
         return res.status(STATUS_CODES.NOT_FOUND).json({
@@ -150,20 +206,33 @@ class CartController {
         });
       }
 
-      // Check stock availability
-      const product = await Product.findById(item.product);
-      if (quantity > 0 && product.stock < quantity) {
-        return res.status(STATUS_CODES.BAD_REQUEST).json({
-          success: false,
-          message: `Only ${product.stock} units available`
-        });
+      // If quantity is 0, remove the item; otherwise validate stock
+      if (quantity > 0) {
+        const product = await Product.findById(item.product);
+        
+        if (!product) {
+          return res.status(STATUS_CODES.NOT_FOUND).json({
+            success: false,
+            message: 'Product no longer available'
+          });
+        }
+
+        if (product.stock < quantity) {
+          return res.status(STATUS_CODES.BAD_REQUEST).json({
+            success: false,
+            message: `Only ${product.stock} units available`
+          });
+        }
       }
 
-      // Update quantity
+      // Update quantity (0 removes item via method)
       cart.updateItemQuantity(itemId, quantity);
       await cart.save();
 
+      // Populate and return
       await cart.populate('items.product', 'name price stock status images');
+
+      logger.info(`Cart item ${itemId} quantity updated to ${quantity} for user ${userId}`);
 
       return res.status(STATUS_CODES.OK).json({
         success: true,
@@ -195,10 +264,21 @@ class CartController {
         });
       }
 
+      // Verify item exists before removing
+      const item = cart.items.id(itemId);
+      if (!item) {
+        return res.status(STATUS_CODES.NOT_FOUND).json({
+          success: false,
+          message: 'Item not found in cart'
+        });
+      }
+
       cart.removeItem(itemId);
       await cart.save();
 
       await cart.populate('items.product', 'name price stock status images');
+
+      logger.info(`Item ${itemId} removed from cart for user ${userId}`);
 
       return res.status(STATUS_CODES.OK).json({
         success: true,
@@ -231,6 +311,8 @@ class CartController {
 
       cart.clearCart();
       await cart.save();
+
+      logger.info(`Cart cleared for user ${userId}`);
 
       return res.status(STATUS_CODES.OK).json({
         success: true,
@@ -347,11 +429,20 @@ class CartController {
         });
       }
 
+      if (!cart.appliedCoupon) {
+        return res.status(STATUS_CODES.BAD_REQUEST).json({
+          success: false,
+          message: 'No coupon applied to this cart'
+        });
+      }
+
       cart.appliedCoupon = undefined;
       cart.calculateTotals();
       await cart.save();
 
       await cart.populate('items.product', 'name price stock status images');
+
+      logger.info(`Coupon removed from cart for user ${userId}`);
 
       return res.status(STATUS_CODES.OK).json({
         success: true,
