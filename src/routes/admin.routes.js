@@ -6,7 +6,7 @@ const { USER_ROLES } = require('../config/constants');
 const router = express.Router();
 
 // Protect all routes - admin only
-router.use(authenticate, authorize(USER_ROLES.ADMIN));
+router.use(authenticate, authorize(USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN));
 
 // Dashboard
 router.get('/dashboard', AdminController.getDashboardStats);

@@ -126,7 +126,7 @@ class AuthController {
   // Refresh access token
   static async refreshToken(req, res) {
     try {
-      const { refreshToken: incomingRefreshToken } = req.body;
+      const { refreshToken } = req.body;
 
       if (!refreshToken) {
         return res.status(STATUS_CODES.BAD_REQUEST).json({

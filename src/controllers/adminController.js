@@ -15,10 +15,12 @@ class AdminController {
       const totalProducts = await Product.countDocuments();
 
       // Get total orders and revenue
-      const orders = await Order.find();
-      const totalOrders = orders.length;
-      const totalRevenue = orders.reduce((acc, order) => acc + order.total, 0);
-
+      const [totalOrders, revenueResult] = await Promise.all([
+        Order.countDocuments(),
+        Order.aggregate([{ $group: { _id: null, total: { $sum: '$total' } } }])
+      ]);
+      const totalRevenue = revenueResult[0]?.total || 0;
+      
       // Get total customers
       const totalCustomers = await User.countDocuments({ role: 'user' });
 
@@ -125,7 +127,7 @@ class AdminController {
       });
     } catch (error) {
       logger.error('Error in getActiveSubscriptions:', error);
-      res.status(STATUS_CODES.INTERNAL_SERVER_ERROR).json({
+      res.status(STATUS_CODES.SERVER_ERROR).json({
         success: false,
         error: 'Failed to fetch active subscriptions'
       });
