@@ -19,16 +19,25 @@ app.use(helmet());
 
 // CORS configuration
 const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',')
-  :['https://mahadevmart.co.in', 'https://www.mahadevmart.co.in',"https://mahadevgroceries.vercel.app"];
+  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+  : [
+      'https://mahadevmart.co.in',
+      'https://www.mahadevmart.co.in',
+      "https://mahadevgroceries.vercel.app"
+    ];
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, Postman)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) {
+
+    const cleanOrigin = origin.trim();
+
+    const isAllowed = allowedOrigins.some(o => cleanOrigin === o);
+
+    if (isAllowed) {
       callback(null, true);
     } else {
+      console.log("❌ Blocked Origin:", origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
