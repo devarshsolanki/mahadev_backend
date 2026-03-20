@@ -20,7 +20,7 @@ app.use(helmet());
 // CORS configuration
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',')
-  : ['http://localhost:3000', 'http://localhost:5173',"https://mahadevgroceries.vercel.app"];
+  :['https://mahadevmart.co.in', 'https://www.mahadevmart.co.in',"https://mahadevgroceries.vercel.app"];
 
 app.use(cors({
   origin: (origin, callback) => {
