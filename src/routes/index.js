@@ -9,6 +9,7 @@ const walletRoutes = require('./wallet.routes');
 const subscriptionRoutes = require('./subscription.routes');
 const adminRoutes = require('./admin.routes');
 const homeSliderRoutes = require('./homeSlider.routes');
+const reviewRoutes = require('./review.routes');
 
 const router = express.Router();
 
@@ -36,9 +37,6 @@ router.use(`/${API_VERSION}/wallet`, walletRoutes);
 router.use(`/${API_VERSION}/subscriptions`, subscriptionRoutes);
 router.use(`/${API_VERSION}/home-sliders`, homeSliderRoutes);
 router.use(`/${API_VERSION}/admin`, adminRoutes);
-
-// Future routes will be added here:
-// router.use(`/${API_VERSION}/coupons`, couponRoutes);
-// router.use(`/${API_VERSION}/reviews`, reviewRoutes);
+router.use(`/${API_VERSION}/reviews`, reviewRoutes);
 
 module.exports = router;
