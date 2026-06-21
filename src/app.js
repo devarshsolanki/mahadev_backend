@@ -19,33 +19,34 @@ app.use(helmet());
 
 // CORS configuration
 const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim().replace(/\/$/, ''))
+  ? process.env.ALLOWED_ORIGINS
+      .split(',')
+      .map(origin => origin.trim().replace(/\/$/, ''))
   : [
       'https://mahadevmart.co.in',
       'https://www.mahadevmart.co.in',
-      "http://localhost:5173",
-      "http://localhost:5000"
+      'http://localhost:5173',
+      'http://localhost:5000'
     ];
 
-app.use(cors({
+const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps, postman, curl)
     if (!origin) return callback(null, true);
 
-    const cleanOrigin = origin.trim();
+    const cleanOrigin = origin.trim().replace(/\/$/, '');
 
-    const isAllowed = allowedOrigins.includes('*') || allowedOrigins.some(o => cleanOrigin === o);
-
-    if (isAllowed) {
-      callback(null, true);
-    } else {
-      console.error(`❌ Blocked Origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
+    if (allowedOrigins.includes('*') || allowedOrigins.includes(cleanOrigin)) {
+      return callback(null, true);
     }
+
+    console.error(`❌ Blocked Origin: ${cleanOrigin}`);
+    return callback(new Error('Not allowed by CORS'));
   },
   credentials: true
-}));
+};
 
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 // Body parser middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
